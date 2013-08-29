@@ -79,8 +79,11 @@ int ofxXMPP::presence_handler(xmpp_conn_t * const conn,
 
 	ofxXMPPUser user;
 	string fullUserName = xmpp_stanza_get_attribute(stanza,"from");
-	user.userName = ofSplitString(xmpp_stanza_get_attribute(stanza,"from"),"/")[0];
-	user.resource = ofSplitString(xmpp_stanza_get_attribute(stanza,"from"),"/")[1];
+	vector<string> nameParts = ofSplitString(xmpp_stanza_get_attribute(stanza,"from"),"/");
+	if(!nameParts.empty())
+		user.userName = nameParts[0];
+	if(nameParts.size()>1)
+		user.resource = namePars[1];
 
 	user.show = ofxXMPP::fromString(getTextFromStanzasChild("show",stanza));
 	user.status = getTextFromStanzasChild("status",stanza);
