@@ -83,7 +83,7 @@ int ofxXMPP::presence_handler(xmpp_conn_t * const conn,
 	if(!nameParts.empty())
 		user.userName = nameParts[0];
 	if(nameParts.size()>1)
-		user.resource = namePars[1];
+		user.resource = nameParts[1];
 
 	user.show = ofxXMPP::fromString(getTextFromStanzasChild("show",stanza));
 	user.status = getTextFromStanzasChild("status",stanza);
@@ -276,8 +276,8 @@ ofxXMPP::ofxXMPP()
 	if(!initialized){
 		xmpp_initialize();
 
-		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG); /* pass NULL instead to silence output */
-	    ctx = xmpp_ctx_new(NULL, NULL);
+		xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG); /* pass NULL instead to silence output */
+	    ctx = xmpp_ctx_new(NULL, log);
 
 		startThread();
 		initialized = true;
