@@ -276,7 +276,8 @@ ofxXMPP::ofxXMPP()
 	if(!initialized){
 		xmpp_initialize();
 
-		xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG); /* pass NULL instead to silence output */
+		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
+		xmpp_log_t * log = NULL;
 	    ctx = xmpp_ctx_new(NULL, log);
 
 		startThread();
