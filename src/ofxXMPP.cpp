@@ -108,14 +108,14 @@ int ofxXMPP::presence_handler(xmpp_conn_t * const conn,
 	const char * presence_type = xmpp_stanza_get_type(stanza);
 	if(presence_type && string(presence_type)=="unavailable" && existingUser!=xmpp->friends.end()){
 		xmpp->friends.erase(existingUser);
-		ofNotifyEvent(userDisconnected,user,this);
+		ofNotifyEvent(xmpp->userDisconnected,user,xmpp);
 	}else{
 		if(existingUser!=xmpp->friends.end()){
 			user.chatState = existingUser->second.chatState;
 			existingUser->second = user;
 		}else{
 			xmpp->friends[fullUserName] = user;
-			ofNotifyEvent(userConnected,user,this);
+			ofNotifyEvent(xmpp->userConnected,user,xmpp);
 		}
 	}
 	return 1;
@@ -185,7 +185,22 @@ int ofxXMPP::iq_handler(xmpp_conn_t * const conn,
 		if(jingle_action_cstr) jingle_action = jingle_action_cstr;
 		cout << xmpp_conn_get_bound_jid(xmpp->conn) << ": has jingle, state: " << xmpp->jingleState << "==" << Disconnected << " jingle_action: " << jingle_action << endl;
 
-		if((jingle_action == "session-initiate" && xmpp->jingleState==Disconnected) || (jingle_action == "session-accept" && xmpp->jingleState==WaitingSessionAccept) ){
+		if(jingle_action == "session-terminate"){
+			xmpp->jingleState = Disconnected;
+			ofxXMPPTerminateReason reason = ofxXMPPTerminateUnkown;
+			if(xmpp_stanza_t * reason_stanza = xmpp_stanza_get_child_by_name(jingle,"reason")){
+				xmpp_stanza_t * reason_content = xmpp_stanza_get_children(reason_stanza);
+
+				if(reason_content){
+					string reasonStr = xmpp_stanza_get_name(reason_content);
+					if(reasonStr=="busy") reason = ofxXMPPTerminateBusy;
+					else if(reasonStr=="decline") reason = ofxXMPPTerminateDecline;
+					else if(reasonStr=="success") reason = ofxXMPPTerminateSuccess;
+				}
+			}
+			ofNotifyEvent(xmpp->jingleTerminateReceived,reason,xmpp);
+
+		}else if((jingle_action == "session-initiate" && xmpp->jingleState==Disconnected) || (jingle_action == "session-accept" && xmpp->jingleState==WaitingSessionAccept) ){
 			cout << "session initiate" << endl;
 			ofxXMPPJingleInitiation jingleInitiation;
 
@@ -485,6 +500,7 @@ void ofxXMPP::initiateRTP(const string & to, ofxXMPPJingleInitiation & jingleIni
 	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
 	xmpp_stanza_set_attribute(jingle,"action","session-initiate");
 	xmpp_stanza_set_attribute(jingle,"initiator",xmpp_conn_get_bound_jid(conn));
+	//TODO:
 	//xmpp_stanza_set_attribute(jingle,"sid",...);
 
 	for(size_t i = 0; i<jingleInitiation.contents.size(); i++){
@@ -642,6 +658,7 @@ void ofxXMPP::acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jing
 	xmpp_stanza_set_attribute(jingle,"action","session-accept");
 	xmpp_stanza_set_attribute(jingle,"initiator",to.c_str());
 	xmpp_stanza_set_attribute(jingle,"responder",xmpp_conn_get_bound_jid(conn));
+	//TODO:
 	//xmpp_stanza_set_attribute(jingle,"sid",...);
 
 	for(size_t i = 0; i<jingleInitiation.contents.size(); i++){
@@ -710,6 +727,47 @@ void ofxXMPP::acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jing
 	jingleState = AcceptingRTP;
 
 	xmpp_send(conn,iq);
+	xmpp_stanza_release(iq);
+}
+
+
+void ofxXMPP::terminateRTPSession(const string & to, ofxXMPPTerminateReason reason){
+	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(iq,"iq");
+	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_type(iq,"set");
+
+	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(jingle,"jingle");
+	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
+	xmpp_stanza_set_attribute(jingle,"action","session-terminate");
+	//TODO: sid
+
+	xmpp_stanza_t * reason_stanza = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(reason_stanza,"reason");
+
+	xmpp_stanza_t * reason_content = xmpp_stanza_new(ctx);
+	switch(reason){
+	case ofxXMPPTerminateBusy:
+		xmpp_stanza_set_name(reason_content,"busy");
+		break;
+	case ofxXMPPTerminateDecline:
+		xmpp_stanza_set_name(reason_content,"decline");
+		break;
+	case ofxXMPPTerminateSuccess:
+		xmpp_stanza_set_name(reason_content,"success");
+		break;
+	}
+
+	xmpp_stanza_add_child(iq,jingle);
+	xmpp_stanza_add_child(jingle,reason_stanza);
+	xmpp_stanza_add_child(reason_stanza,reason_content);
+
+	xmpp_send(conn,iq);
+
+	xmpp_stanza_release(reason_content);
+	xmpp_stanza_release(reason_stanza);
+	xmpp_stanza_release(jingle);
 	xmpp_stanza_release(iq);
 }
 

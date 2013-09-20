@@ -37,6 +37,13 @@ enum ofxXMPPConnectionState{
 	ofxXMPPDisconnected
 };
 
+enum ofxXMPPTerminateReason{
+	ofxXMPPTerminateSuccess,
+	ofxXMPPTerminateBusy,
+	ofxXMPPTerminateDecline,
+	ofxXMPPTerminateUnkown
+};
+
 struct ofxXMPPUser{
 	string userName;
 	string status;
@@ -116,8 +123,10 @@ public:
 	ofEvent<ofxXMPPJingleInitiation> jingleInitiationReceived;
 	ofEvent<string> jingleInitiationACKd;
 	ofEvent<ofxXMPPJingleInitiation> jingleInitiationAccepted;
+	ofEvent<ofxXMPPTerminateReason> jingleTerminateReceived;
 	ofEvent<ofxXMPPUser> userConnected;
 	ofEvent<ofxXMPPUser> userDisconnected;
+	ofEvent<string> jingleRing;
 
 	// RTP-ICE using Jingle  xmpp.org/extensions/xep-0167.html
 	void initiateRTP(const string & to, ofxXMPPJingleInitiation & jingle);
@@ -125,6 +134,7 @@ public:
 	void ring(const ofxXMPPJingleInitiation & jingle);
 	void ackRing(const string & to);
 	void acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jingle);
+	void terminateRTPSession(const string & to, ofxXMPPTerminateReason reason);
 
 	static string toString(ofxXMPPShowState showState);
 	static ofxXMPPShowState fromString(string showState);
