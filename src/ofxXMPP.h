@@ -116,6 +116,8 @@ public:
 	ofEvent<ofxXMPPJingleInitiation> jingleInitiationReceived;
 	ofEvent<string> jingleInitiationACKd;
 	ofEvent<ofxXMPPJingleInitiation> jingleInitiationAccepted;
+	ofEvent<ofxXMPPUser> userConnected;
+	ofEvent<ofxXMPPUser> userDisconnected;
 
 	// RTP-ICE using Jingle  xmpp.org/extensions/xep-0167.html
 	void initiateRTP(const string & to, ofxXMPPJingleInitiation & jingle);

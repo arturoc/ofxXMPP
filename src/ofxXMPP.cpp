@@ -108,12 +108,14 @@ int ofxXMPP::presence_handler(xmpp_conn_t * const conn,
 	const char * presence_type = xmpp_stanza_get_type(stanza);
 	if(presence_type && string(presence_type)=="unavailable" && existingUser!=xmpp->friends.end()){
 		xmpp->friends.erase(existingUser);
+		ofNotifyEvent(userDisconnected,user,this);
 	}else{
-		if(existingUser!=xmpp->friends.end() && existingUser->second.priority<=user.priority){
+		if(existingUser!=xmpp->friends.end()){
 			user.chatState = existingUser->second.chatState;
 			existingUser->second = user;
 		}else{
 			xmpp->friends[fullUserName] = user;
+			ofNotifyEvent(userConnected,user,this);
 		}
 	}
 	return 1;
