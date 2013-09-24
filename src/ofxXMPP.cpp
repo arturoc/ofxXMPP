@@ -9,6 +9,7 @@
 #include "ofUtils.h"
 
 xmpp_ctx_t *ofxXMPP::ctx=NULL;
+string ofxXMPP::LOG_NAME = "ofxXMPP";
 
 
 string ofxXMPP::toString(JingleState state){
@@ -35,6 +36,33 @@ string ofxXMPP::toString(JingleState state){
 		return "AcceptingRTP";
 	}
 }
+
+/*string ofxXMPP::toString(JingleFileTransferState state){
+	switch(state){
+	case FileDisconnected:
+		return "Disconnected";
+		//initiator
+	case FileInitiatingRTP:
+		return "InitiatingRTP";
+	case FileInitiationACKd:
+		return "InitiationACKd";
+	case FileWaitingSessionAccept:
+		return "WaitingSessionAccept";
+	case FileSessionAccepted:
+		return "SessionAccepted";
+		// responder
+	case FileWaitingFile:
+		return "FileWaitingFile";
+	case FileGotInitiate:
+		return "GotInitiate";
+	case FileRinging:
+		return "Ringing";
+	case FileRingACKd:
+		return "RingACKd";
+	case FileAcceptingRTP:
+		return "AcceptingRTP";
+	}
+}*/
 
 void ofxXMPP::conn_handler(xmpp_conn_t * const conn, const xmpp_conn_event_t status,
                   const int error, xmpp_stream_error_t * const stream_error,
@@ -67,6 +95,13 @@ string getTextFromStanzasChild(const string & childName, xmpp_stanza_t * stanza)
 		//xmpp_stanza_release(child);
 	}
 	return text;
+}
+
+void ofxXMPP::addTextChild(xmpp_stanza_t * stanza, const string & textstr){
+	xmpp_stanza_t * text = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_text(text,textstr.c_str());
+	xmpp_stanza_add_child(stanza,text);
+	xmpp_stanza_release(text);
 }
 
 int ofxXMPP::presence_handler(xmpp_conn_t * const conn,
@@ -168,6 +203,159 @@ int ofxXMPP::message_handler(xmpp_conn_t * const conn,
 }
 
 
+ofxXMPPJingleInitiation ofxXMPP::jingleInititationFromStanza(xmpp_stanza_t * iq){
+	ofxXMPPJingleInitiation jingleInitiation;
+
+	jingleInitiation.from = xmpp_stanza_get_attribute(iq,"from");
+	xmpp_stanza_t * jingle = xmpp_stanza_get_child_by_name(iq,"jingle");
+
+	xmpp_stanza_t * content = xmpp_stanza_get_child_by_name(jingle,"content");
+	while(content){
+		ofxXMPPJingleContent xmppContent;
+
+		// content description and payloads
+		xmpp_stanza_t * description = xmpp_stanza_get_child_by_name(content,"description");
+		if(description){
+			xmppContent.media = xmpp_stanza_get_attribute(description,"media");
+			cout << "xmpp " << "received content with media" << xmppContent.media << endl;
+			xmpp_stanza_t * payload = xmpp_stanza_get_child_by_name(description,"payload");
+			while(payload){
+				ofxXMPPPayload xmppPayload;
+				xmppPayload.id = ofToInt(xmpp_stanza_get_id(payload));
+				xmppPayload.clockrate = ofToInt(xmpp_stanza_get_attribute(payload,"clockrate"));
+				xmppPayload.name = xmpp_stanza_get_attribute(payload,"name");
+				xmppContent.payloads.push_back(xmppPayload);
+
+				payload = xmpp_stanza_get_next(payload);
+			}
+		}
+
+		// content transport and candidates
+		xmpp_stanza_t * transport = xmpp_stanza_get_child_by_name(content,"transport");
+		if(transport){
+			xmppContent.transport.pwd = xmpp_stanza_get_attribute(transport,"pwd");
+			xmppContent.transport.ufrag = xmpp_stanza_get_attribute(transport,"ufrag");
+			xmpp_stanza_t * candidate = xmpp_stanza_get_child_by_name(transport,"candidate");
+			while(candidate){
+				ofxICECandidate xmppCandidate;
+				xmppCandidate.component = ofToInt(xmpp_stanza_get_attribute(candidate,"component"));
+				xmppCandidate.foundation = xmpp_stanza_get_attribute(candidate,"foundation");
+				xmppCandidate.generation = ofToInt(xmpp_stanza_get_attribute(candidate,"generation"));
+				xmppCandidate.id = xmpp_stanza_get_id(candidate);
+				xmppCandidate.ip = xmpp_stanza_get_attribute(candidate,"ip");
+				xmppCandidate.network = ofToInt(xmpp_stanza_get_attribute(candidate,"network"));
+				xmppCandidate.port = ofToInt(xmpp_stanza_get_attribute(candidate,"port"));
+				xmppCandidate.priority = ofToInt(xmpp_stanza_get_attribute(candidate,"priority"));
+				xmppCandidate.protocol = xmpp_stanza_get_attribute(candidate,"protocol");
+				xmppCandidate.type = xmpp_stanza_get_type(candidate);
+				xmppContent.transport.candidates.push_back(xmppCandidate);
+
+				candidate = xmpp_stanza_get_next(candidate);
+			}
+		}
+
+		jingleInitiation.contents.push_back(xmppContent);
+
+		content = xmpp_stanza_get_next(content);
+	}
+
+	return jingleInitiation;
+}
+
+
+ofxXMPPJingleFileInitiation ofxXMPP::jingleFileInititationFromStanza(xmpp_stanza_t * iq){
+	ofxXMPPJingleFileInitiation jingleFileInitiation;
+
+	jingleFileInitiation.sid = xmpp_stanza_get_attribute(iq,"sid");
+	jingleFileInitiation.from = xmpp_stanza_get_attribute(iq,"from");
+	xmpp_stanza_t * jingle = xmpp_stanza_get_child_by_name(iq,"jingle");
+
+	xmpp_stanza_t * content = xmpp_stanza_get_child_by_name(jingle,"content");
+	if(content){
+
+		// content description and payloads
+		xmpp_stanza_t * description = xmpp_stanza_get_child_by_name(content,"description");
+		if(description){
+			xmpp_stanza_t * offer = xmpp_stanza_get_child_by_name(description,"offer");
+			if(offer){
+				xmpp_stanza_t * file = xmpp_stanza_get_child_by_name(offer,"file");
+				if(file){
+					jingleFileInitiation.fid = getTextFromStanzasChild("fid",file);
+					jingleFileInitiation.name = getTextFromStanzasChild("name",file);
+					jingleFileInitiation.date = getTextFromStanzasChild("date",file);
+					jingleFileInitiation.desc = getTextFromStanzasChild("desc",file);
+
+					jingleFileInitiation.size = 0;
+					istringstream cur(getTextFromStanzasChild("size",file));
+					cur >> jingleFileInitiation.size;
+
+					jingleFileInitiation.hash = getTextFromStanzasChild("hash",file);
+				}
+			}
+		}
+
+		// content transport and candidates
+		xmpp_stanza_t * transport = xmpp_stanza_get_child_by_name(content,"transport");
+		if(transport){
+			jingleFileInitiation.transport.pwd = xmpp_stanza_get_attribute(transport,"pwd");
+			jingleFileInitiation.transport.ufrag = xmpp_stanza_get_attribute(transport,"ufrag");
+			xmpp_stanza_t * candidate = xmpp_stanza_get_child_by_name(transport,"candidate");
+			while(candidate){
+				ofxICECandidate xmppCandidate;
+				xmppCandidate.component = ofToInt(xmpp_stanza_get_attribute(candidate,"component"));
+				xmppCandidate.foundation = xmpp_stanza_get_attribute(candidate,"foundation");
+				xmppCandidate.generation = ofToInt(xmpp_stanza_get_attribute(candidate,"generation"));
+				xmppCandidate.id = xmpp_stanza_get_id(candidate);
+				xmppCandidate.ip = xmpp_stanza_get_attribute(candidate,"ip");
+				xmppCandidate.network = ofToInt(xmpp_stanza_get_attribute(candidate,"network"));
+				xmppCandidate.port = ofToInt(xmpp_stanza_get_attribute(candidate,"port"));
+				xmppCandidate.priority = ofToInt(xmpp_stanza_get_attribute(candidate,"priority"));
+				xmppCandidate.protocol = xmpp_stanza_get_attribute(candidate,"protocol");
+				xmppCandidate.type = xmpp_stanza_get_type(candidate);
+				jingleFileInitiation.transport.candidates.push_back(xmppCandidate);
+
+				candidate = xmpp_stanza_get_next(candidate);
+			}
+		}
+
+
+	}
+
+	return jingleFileInitiation;
+}
+
+void ofxXMPP::rtpInitiationReceived(xmpp_stanza_t * iq){
+	if( jingleState==Disconnected ){
+		ofxXMPPJingleInitiation jingleInitiation = jingleInititationFromStanza(iq);
+		jingleState = GotInitiate;
+		ofNotifyEvent(jingleInitiationReceived,jingleInitiation,this);
+	}
+}
+
+void ofxXMPP::rtpInitiationAccepted(xmpp_stanza_t * iq){
+	if( jingleState==WaitingSessionAccept ){
+		ofxXMPPJingleInitiation jingleInitiation = jingleInititationFromStanza(iq);
+		jingleState = SessionAccepted;
+		ofNotifyEvent(jingleInitiationAccepted,jingleInitiation,this);
+	}
+}
+
+void ofxXMPP::fileInitiationReceived(xmpp_stanza_t * iq){
+	//if( jingleFileTransferState==FileDisconnected || jingleFileTransferState==FileWaitingFile){
+		ofxXMPPJingleFileInitiation jingleFileInitiation = jingleFileInititationFromStanza(iq);
+		//jingleFileTransferState = FileGotInitiate;
+		ofNotifyEvent(jingleFileInitiationReceived,jingleFileInitiation,this);
+	//}
+}
+
+void ofxXMPP::fileInitiationAccepted(xmpp_stanza_t * iq){
+	//if( jingleFileTransferState==FileWaitingSessionAccept ){
+		ofxXMPPJingleFileInitiation jingleFileInitiation = jingleFileInititationFromStanza(iq);
+		//jingleFileTransferState = FileSessionAccepted;
+		ofNotifyEvent(jingleFileInitiationAccepted,jingleFileInitiation,this);
+	//}
+}
+
 int ofxXMPP::iq_handler(xmpp_conn_t * const conn,
 			     xmpp_stanza_t * const stanza,
 			     void * const userdata){
@@ -183,7 +371,8 @@ int ofxXMPP::iq_handler(xmpp_conn_t * const conn,
 		const char * jingle_action_cstr = xmpp_stanza_get_attribute(jingle,"action");
 		string jingle_action;
 		if(jingle_action_cstr) jingle_action = jingle_action_cstr;
-		cout << xmpp_conn_get_bound_jid(xmpp->conn) << ": has jingle, state: " << xmpp->jingleState << "==" << Disconnected << " jingle_action: " << jingle_action << endl;
+		cout << xmpp_conn_get_bound_jid(xmpp->conn) << ": has jingle, state: " << toString(xmpp->jingleState) << " jingle_action: " << jingle_action << endl;
+		//cout << xmpp_conn_get_bound_jid(xmpp->conn) << ": has jingle, file transfer state: " << toString(xmpp->jingleFileTransferState) << " jingle_action: " << jingle_action << endl;
 
 		if(jingle_action == "session-terminate"){
 			xmpp->jingleState = Disconnected;
@@ -200,74 +389,74 @@ int ofxXMPP::iq_handler(xmpp_conn_t * const conn,
 			}
 			ofNotifyEvent(xmpp->jingleTerminateReceived,reason,xmpp);
 
-		}else if((jingle_action == "session-initiate" && xmpp->jingleState==Disconnected) || (jingle_action == "session-accept" && xmpp->jingleState==WaitingSessionAccept) ){
-			cout << "session initiate" << endl;
-			ofxXMPPJingleInitiation jingleInitiation;
-
-			jingleInitiation.from = xmpp_stanza_get_attribute(stanza,"from");
-
+		}else if(jingle_action == "session-initiate"){
 			xmpp_stanza_t * content = xmpp_stanza_get_child_by_name(jingle,"content");
-			while(content){
-				ofxXMPPJingleContent xmppContent;
-
-				// content description and payloads
+			if(content){
 				xmpp_stanza_t * description = xmpp_stanza_get_child_by_name(content,"description");
 				if(description){
-					xmppContent.media = xmpp_stanza_get_attribute(description,"media");
-					cout << "xmpp " << "received content with media" << xmppContent.media << endl;
-					xmpp_stanza_t * payload = xmpp_stanza_get_child_by_name(description,"payload");
-					while(payload){
-						ofxXMPPPayload xmppPayload;
-						xmppPayload.id = ofToInt(xmpp_stanza_get_id(payload));
-						xmppPayload.clockrate = ofToInt(xmpp_stanza_get_attribute(payload,"clockrate"));
-						xmppPayload.name = xmpp_stanza_get_attribute(payload,"name");
-						xmppContent.payloads.push_back(xmppPayload);
-
-						payload = xmpp_stanza_get_next(payload);
+					const char * description_ns= xmpp_stanza_get_ns(description);
+					if(description_ns && string(description_ns)=="urn:xmpp:jingle:apps:rtp:1"){
+						xmpp->rtpInitiationReceived(stanza);
+					}else if(description_ns && string(description_ns)=="urn:xmpp:jingle:apps:file-transfer:3"){
+						xmpp->fileInitiationReceived(stanza);
+					}else{
+						ofLogWarning(LOG_NAME) << "got session-initiate for unkown namespace " << description_ns;
 					}
+				}else{
+					ofLogWarning(LOG_NAME) << "got session-initiate without description";
 				}
-
-				// content transport and candidates
-				xmpp_stanza_t * transport = xmpp_stanza_get_child_by_name(content,"transport");
-				if(transport){
-					xmppContent.transport.pwd = xmpp_stanza_get_attribute(transport,"pwd");
-					xmppContent.transport.ufrag = xmpp_stanza_get_attribute(transport,"ufrag");
-					xmpp_stanza_t * candidate = xmpp_stanza_get_child_by_name(transport,"candidate");
-					while(candidate){
-						ofxICECandidate xmppCandidate;
-						xmppCandidate.component = ofToInt(xmpp_stanza_get_attribute(candidate,"component"));
-						xmppCandidate.foundation = xmpp_stanza_get_attribute(candidate,"foundation");
-						xmppCandidate.generation = ofToInt(xmpp_stanza_get_attribute(candidate,"generation"));
-						xmppCandidate.id = xmpp_stanza_get_id(candidate);
-						xmppCandidate.ip = xmpp_stanza_get_attribute(candidate,"ip");
-						xmppCandidate.network = ofToInt(xmpp_stanza_get_attribute(candidate,"network"));
-						xmppCandidate.port = ofToInt(xmpp_stanza_get_attribute(candidate,"port"));
-						xmppCandidate.priority = ofToInt(xmpp_stanza_get_attribute(candidate,"priority"));
-						xmppCandidate.protocol = xmpp_stanza_get_attribute(candidate,"protocol");
-						xmppCandidate.type = xmpp_stanza_get_type(candidate);
-						xmppContent.transport.candidates.push_back(xmppCandidate);
-
-						candidate = xmpp_stanza_get_next(candidate);
-					}
-				}
-
-				jingleInitiation.contents.push_back(xmppContent);
-
-				content = xmpp_stanza_get_next(content);
-			}
-
-			if(jingle_action=="session-initiate"){
-				xmpp->jingleState = GotInitiate;
-				ofNotifyEvent(xmpp->jingleInitiationReceived,jingleInitiation,xmpp);
 			}else{
-				xmpp->jingleState = SessionAccepted;
-				ofNotifyEvent(xmpp->jingleInitiationAccepted,jingleInitiation,xmpp);
+				ofLogWarning(LOG_NAME) << "got session-initiate without content";
 			}
 
-		}else if(jingle_action =="session-info" && xmpp->jingleState==InitiationACKd){
-			if(xmpp_stanza_get_child_by_name(jingle,"ringing")){
+		}else if (jingle_action == "session-accept") {
+			xmpp_stanza_t * content = xmpp_stanza_get_child_by_name(jingle,"content");
+			if(content){
+				xmpp_stanza_t * description = xmpp_stanza_get_child_by_name(content,"description");
+				if(description){
+					const char * description_ns = xmpp_stanza_get_ns(description);
+					if(description_ns && string(description_ns)=="urn:xmpp:jingle:apps:rtp:1"){
+						xmpp->rtpInitiationAccepted(stanza);
+					}else if(description_ns && string(description_ns)=="urn:xmpp:jingle:apps:file-transfer:3"){
+						xmpp->fileInitiationAccepted(stanza);
+					}else{
+						ofLogWarning(LOG_NAME) << "got session-accept for unkown namespace " << description_ns;
+					}
+				}else{
+					ofLogWarning(LOG_NAME) << "got session-accept without description";
+				}
+			}else{
+				ofLogWarning(LOG_NAME) << "got session-accept without content";
+			}
+
+		}else if(jingle_action =="session-info"){
+			if(xmpp_stanza_get_child_by_name(jingle,"ringing") && xmpp->jingleState==InitiationACKd){
 				xmpp->jingleState = WaitingSessionAccept;
-				xmpp->ackRing(xmpp_stanza_get_attribute(stanza,"from"));
+				xmpp->ackRing(xmpp_stanza_get_attribute(stanza,"from"), xmpp_stanza_get_attribute(stanza,"sid"));
+
+			}else if(xmpp_stanza_t * checksum = xmpp_stanza_get_child_by_name(jingle,"checksum")){
+				if(xmpp_stanza_t * file = xmpp_stanza_get_child_by_name(checksum,"file")){
+					if(xmpp_stanza_t * hash = xmpp_stanza_get_child_by_name(file,"hash")){
+						ofxXMPPJingleHash jingleHash;
+						jingleHash.from = xmpp_stanza_get_attribute(stanza,"from");
+						jingleHash.algo = xmpp_stanza_get_attribute(hash,"algo");
+						jingleHash.hash = xmpp_stanza_get_text(xmpp_stanza_get_children(hash));
+
+						ofNotifyEvent(xmpp->hashReceived,jingleHash,xmpp);
+					}
+				}
+
+			}else if(xmpp_stanza_t * received = xmpp_stanza_get_child_by_name(jingle,"received")){
+				if(xmpp_stanza_t * file = xmpp_stanza_get_child_by_name(received,"file")){
+					if(xmpp_stanza_t * hash = xmpp_stanza_get_child_by_name(file,"hash")){
+						ofxXMPPJingleHash jingleHash;
+						jingleHash.from = xmpp_stanza_get_attribute(stanza,"from");
+						jingleHash.algo = xmpp_stanza_get_attribute(hash,"algo");
+						jingleHash.hash = xmpp_stanza_get_text(xmpp_stanza_get_children(hash));
+
+						ofNotifyEvent(xmpp->hashACKd,jingleHash,xmpp);
+					}
+				}
 			}
 		}
 	}else{
@@ -275,11 +464,17 @@ int ofxXMPP::iq_handler(xmpp_conn_t * const conn,
 			xmpp->jingleState = InitiationACKd;
 		}else if( iq_type && string(iq_type)=="result" && xmpp->jingleState==AcceptingRTP){
 			xmpp->jingleState = SessionAccepted;
-		}
+		}/*TODO: handle acks
+		else if( iq_type && string(iq_type)=="result" && xmpp->jingleFileTransferState==FileInitiatingRTP){
+			xmpp->jingleFileTransferState = FileWaitingSessionAccept;
+		}else if( iq_type && string(iq_type)=="result" && xmpp->jingleFileTransferState==FileAcceptingRTP){
+			xmpp->jingleFileTransferState = FileSessionAccepted;
+		}*/
 	}
 
 
 	cout << xmpp_conn_get_bound_jid(xmpp->conn) << " to state " << toString(xmpp->jingleState) << endl;
+	//cout << xmpp_conn_get_bound_jid(xmpp->conn) << " to state " << toString(xmpp->jingleFileTransferState) << endl;
 	return 1;
 }
 
@@ -288,13 +483,14 @@ ofxXMPP::ofxXMPP()
 ,currentShow(ofxXMPPShowAvailable)
 ,connectionState(ofxXMPPDisconnected)
 ,jingleState(Disconnected)
+//,jingleFileTransferState(FileDisconnected)
 {
 	static bool initialized = false;
 	if(!initialized){
 		xmpp_initialize();
 
-		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
-		xmpp_log_t * log = NULL;
+		xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
+		//xmpp_log_t * log = NULL;
 	    ctx = xmpp_ctx_new(NULL, log);
 
 		startThread();
@@ -489,10 +685,41 @@ string ofxXMPP::getBoundJID(){
 	return xmpp_conn_get_bound_jid(conn);
 }
 
+
+xmpp_stanza_t * ofxXMPP::stanzaFromICETransport(const ofxXMPPICETransport & transport){
+	xmpp_stanza_t * transport_stanza = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(transport_stanza,"transport");
+	xmpp_stanza_set_ns(transport_stanza,"urn:xmpp:jingle:transports:ice-udp:1");
+	xmpp_stanza_set_attribute(transport_stanza,"pwd",transport.pwd.c_str());
+	xmpp_stanza_set_attribute(transport_stanza,"ufrag",transport.ufrag.c_str());
+
+	for(size_t c=0;c<transport.candidates.size();c++){
+		const ofxICECandidate & xmppCandidate = transport.candidates[c];
+		xmpp_stanza_t * candidate = xmpp_stanza_new(ctx);
+		xmpp_stanza_set_name(candidate,"candidate");
+		xmpp_stanza_set_attribute(candidate,"component",ofToString(xmppCandidate.component).c_str());
+		xmpp_stanza_set_attribute(candidate,"foundation",xmppCandidate.foundation.c_str());
+		xmpp_stanza_set_attribute(candidate,"generation",ofToString(xmppCandidate.generation).c_str());
+		xmpp_stanza_set_id(candidate,xmppCandidate.id.c_str());
+		xmpp_stanza_set_attribute(candidate,"ip",xmppCandidate.ip.c_str());
+		xmpp_stanza_set_attribute(candidate,"network",ofToString(xmppCandidate.network).c_str());
+		xmpp_stanza_set_attribute(candidate,"port",ofToString(xmppCandidate.port).c_str());
+		xmpp_stanza_set_attribute(candidate,"priority",ofToString(xmppCandidate.priority).c_str());
+		xmpp_stanza_set_attribute(candidate,"protocol",xmppCandidate.protocol.c_str());
+		xmpp_stanza_set_type(candidate,xmppCandidate.type.c_str());
+
+		xmpp_stanza_add_child(transport_stanza,candidate);
+		xmpp_stanza_release(candidate);
+	}
+
+	return transport_stanza;
+}
+
 void ofxXMPP::initiateRTP(const string & to, ofxXMPPJingleInitiation & jingleInitiation){
 	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(iq,"iq");
 	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingleInitiation.sid.c_str());
 	xmpp_stanza_set_type(iq,"set");
 
 	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
@@ -531,30 +758,7 @@ void ofxXMPP::initiateRTP(const string & to, ofxXMPPJingleInitiation & jingleIni
 			xmpp_stanza_release(payload);
 		}
 
-		xmpp_stanza_t * transport = xmpp_stanza_new(ctx);
-		xmpp_stanza_set_name(transport,"transport");
-		xmpp_stanza_set_ns(transport,"urn:xmpp:jingle:transports:ice-udp:1");
-		xmpp_stanza_set_attribute(transport,"pwd",xmppContent.transport.pwd.c_str());
-		xmpp_stanza_set_attribute(transport,"ufrag",xmppContent.transport.ufrag.c_str());
-
-		for(size_t c=0;c<xmppContent.transport.candidates.size();c++){
-			const ofxICECandidate & xmppCandidate = xmppContent.transport.candidates[c];
-			xmpp_stanza_t * candidate = xmpp_stanza_new(ctx);
-			xmpp_stanza_set_name(candidate,"candidate");
-			xmpp_stanza_set_attribute(candidate,"component",ofToString(xmppCandidate.component).c_str());
-			xmpp_stanza_set_attribute(candidate,"foundation",xmppCandidate.foundation.c_str());
-			xmpp_stanza_set_attribute(candidate,"generation",ofToString(xmppCandidate.generation).c_str());
-			xmpp_stanza_set_id(candidate,xmppCandidate.id.c_str());
-			xmpp_stanza_set_attribute(candidate,"ip",xmppCandidate.ip.c_str());
-			xmpp_stanza_set_attribute(candidate,"network",ofToString(xmppCandidate.network).c_str());
-			xmpp_stanza_set_attribute(candidate,"port",ofToString(xmppCandidate.port).c_str());
-			xmpp_stanza_set_attribute(candidate,"priority",ofToString(xmppCandidate.priority).c_str());
-			xmpp_stanza_set_attribute(candidate,"protocol",xmppCandidate.protocol.c_str());
-			xmpp_stanza_set_type(candidate,xmppCandidate.type.c_str());
-
-			xmpp_stanza_add_child(transport,candidate);
-			xmpp_stanza_release(candidate);
-		}
+		xmpp_stanza_t * transport = stanzaFromICETransport(xmppContent.transport);
 
 		xmpp_stanza_add_child(content,transport);
 		xmpp_stanza_release(transport);
@@ -581,6 +785,24 @@ void ofxXMPP::ack(const ofxXMPPJingleInitiation & jingle){
 	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(iq,"iq");
 	xmpp_stanza_set_attribute(iq,"to",jingle.from.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingle.sid.c_str());
+	xmpp_stanza_set_type(iq,"result");
+	xmpp_send(conn,iq);
+	xmpp_stanza_release(iq);
+
+}
+
+void ofxXMPP::ack(const ofxXMPPJingleFileInitiation & jingle){
+	/*<iq from='juliet@capulet.lit/balcony'
+	    id='sf93gv76'
+	    to='romeo@montague.lit/orchard'
+	    type='result'/>*/
+
+	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(iq,"iq");
+	xmpp_stanza_set_attribute(iq,"to",jingle.from.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingle.sid.c_str());
+	xmpp_stanza_set_attribute(iq,"fid",jingle.fid.c_str());
 	xmpp_stanza_set_type(iq,"result");
 	xmpp_send(conn,iq);
 	xmpp_stanza_release(iq);
@@ -603,6 +825,7 @@ void ofxXMPP::ring(const ofxXMPPJingleInitiation & xmppJingle){
 	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(iq,"iq");
 	xmpp_stanza_set_attribute(iq,"to",xmppJingle.from.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",xmppJingle.sid.c_str());
 	xmpp_stanza_set_type(iq,"set");
 
 	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
@@ -625,10 +848,11 @@ void ofxXMPP::ring(const ofxXMPPJingleInitiation & xmppJingle){
 	xmpp_stanza_release(iq);
 }
 
-void ofxXMPP::ackRing(const string & to){
+void ofxXMPP::ackRing(const string & to, const string & sid){
 	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(iq,"iq");
 	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",sid.c_str());
 	xmpp_stanza_set_type(iq,"result");
 	xmpp_send(conn,iq);
 	xmpp_stanza_release(iq);
@@ -642,6 +866,278 @@ void ofxXMPP::stop(){
 	conn = NULL;
 }
 
+void ofxXMPP::initiateFileTransfer(const string & to, ofxXMPPJingleFileInitiation & jingleFileInitiation){
+	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(iq,"iq");
+	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingleFileInitiation.sid.c_str());
+	xmpp_stanza_set_type(iq,"set");
+
+	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(jingle,"jingle");
+	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
+	xmpp_stanza_set_attribute(jingle,"action","session-initiate");
+	xmpp_stanza_set_attribute(jingle,"initiator",xmpp_conn_get_bound_jid(conn));
+	xmpp_stanza_add_child(iq,jingle);
+
+	xmpp_stanza_t * content = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(content,"content");
+	xmpp_stanza_add_child(jingle,content);
+
+	xmpp_stanza_t * description = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(description,"description");
+	xmpp_stanza_set_ns(description, "urn:xmpp:jingle:apps:file-transfer:3");
+	xmpp_stanza_add_child(content,description);
+
+	xmpp_stanza_t * offer = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(offer,"offer");
+	xmpp_stanza_add_child(description,offer);
+
+	xmpp_stanza_t * file = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(file,"file");
+	xmpp_stanza_add_child(offer,file);
+
+	xmpp_stanza_t * fid = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(fid,"fid");
+	addTextChild(fid,jingleFileInitiation.fid);
+	xmpp_stanza_add_child(file,fid);
+	xmpp_stanza_release(fid);
+
+	xmpp_stanza_t * name = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(name,"name");
+	addTextChild(name,jingleFileInitiation.name);
+	xmpp_stanza_add_child(file,name);
+	xmpp_stanza_release(name);
+
+	xmpp_stanza_t * date = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(date,"date");
+	addTextChild(date,jingleFileInitiation.date);
+	xmpp_stanza_add_child(file,date);
+	xmpp_stanza_release(date);
+
+	xmpp_stanza_t * desc = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(desc,"desc");
+	addTextChild(desc,jingleFileInitiation.desc);
+	xmpp_stanza_add_child(file,desc);
+	xmpp_stanza_release(desc);
+
+	xmpp_stanza_t * size = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(size,"size");
+	addTextChild(size,ofToString(jingleFileInitiation.size));
+	xmpp_stanza_add_child(file,size);
+	xmpp_stanza_release(size);
+
+	/*xmpp_stanza_t * hash = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(hash,"hash");
+	xmpp_stanza_set_text(hash,jingleFileInitiation.hash.c_str());
+	xmpp_stanza_set_ns(hash,"urn:xmpp:hashes:1");
+	xmpp_stanza_set_attribute(hash,"algo","sha-1");
+	xmpp_stanza_add_child(file,hash);
+	xmpp_stanza_release(hash);*/
+
+	xmpp_stanza_release(file);
+	xmpp_stanza_release(offer);
+	xmpp_stanza_release(description);
+
+	xmpp_stanza_t * transport = stanzaFromICETransport(jingleFileInitiation.transport);
+
+	xmpp_stanza_add_child(content,transport);
+	xmpp_stanza_release(transport);
+
+	xmpp_stanza_release(content);
+
+	xmpp_stanza_release(jingle);
+
+	//jingleFileTransferState = FileInitiatingRTP;
+
+	cout << "xmpp sending initiate file transfer" << endl;
+	xmpp_send(conn,iq);
+	xmpp_stanza_release(iq);
+}
+
+
+void ofxXMPP::acceptFileTransfer(ofxXMPPJingleFileInitiation & jingleFileInitiation){
+	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(iq,"iq");
+	xmpp_stanza_set_attribute(iq,"to",jingleFileInitiation.from.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingleFileInitiation.sid.c_str());
+	xmpp_stanza_set_type(iq,"set");
+
+	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(jingle,"jingle");
+	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
+	xmpp_stanza_set_attribute(jingle,"action","session-accept");
+	xmpp_stanza_set_attribute(jingle,"initiator",jingleFileInitiation.from.c_str());
+	xmpp_stanza_add_child(iq,jingle);
+
+	xmpp_stanza_t * content = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(content,"content");
+	xmpp_stanza_add_child(jingle,content);
+
+	xmpp_stanza_t * description = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(description,"description");
+	xmpp_stanza_set_ns(description, "urn:xmpp:jingle:apps:file-transfer:3");
+	xmpp_stanza_add_child(content,description);
+
+	xmpp_stanza_t * offer = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(offer,"offer");
+	xmpp_stanza_add_child(description,offer);
+
+	xmpp_stanza_t * file = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(file,"file");
+	xmpp_stanza_add_child(offer,file);
+
+	xmpp_stanza_t * fid = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(fid,"fid");
+	addTextChild(fid,jingleFileInitiation.fid);
+	xmpp_stanza_add_child(file,fid);
+	xmpp_stanza_release(fid);
+
+	xmpp_stanza_t * name = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(name,"name");
+	addTextChild(name,jingleFileInitiation.name);
+	xmpp_stanza_add_child(file,name);
+	xmpp_stanza_release(name);
+
+	xmpp_stanza_t * date = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(date,"date");
+	addTextChild(date,jingleFileInitiation.date);
+	xmpp_stanza_add_child(file,date);
+	xmpp_stanza_release(date);
+
+	xmpp_stanza_t * desc = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(desc,"desc");
+	addTextChild(desc,jingleFileInitiation.desc);
+	xmpp_stanza_add_child(file,desc);
+	xmpp_stanza_release(desc);
+
+	xmpp_stanza_t * size = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(size,"size");
+	addTextChild(size,ofToString(jingleFileInitiation.size));
+	xmpp_stanza_add_child(file,size);
+	xmpp_stanza_release(size);
+
+	/*xmpp_stanza_t * hash = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(hash,"hash");
+	xmpp_stanza_set_text(hash,jingleFileInitiation.hash.c_str());
+	xmpp_stanza_set_ns(hash,"urn:xmpp:hashes:1");
+	xmpp_stanza_set_attribute(hash,"algo","sha-1");
+	xmpp_stanza_add_child(file,hash);
+	xmpp_stanza_release(hash);*/
+
+	xmpp_stanza_release(file);
+	xmpp_stanza_release(offer);
+	xmpp_stanza_release(description);
+
+	xmpp_stanza_t * transport = stanzaFromICETransport(jingleFileInitiation.transport);
+
+	xmpp_stanza_add_child(content,transport);
+	xmpp_stanza_release(transport);
+
+	xmpp_stanza_release(content);
+
+	xmpp_stanza_release(jingle);
+
+	//jingleFileTransferState = FileAcceptingRTP;
+
+	cout << "xmpp sending initiate file transfer" << endl;
+	xmpp_send(conn,iq);
+	xmpp_stanza_release(iq);
+}
+
+
+void ofxXMPP::sendFileHash(const string & to, const ofxXMPPJingleHash & hash){
+	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(iq,"iq");
+	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",hash.sid.c_str());
+	xmpp_stanza_set_type(iq,"set");
+
+	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(jingle,"jingle");
+	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
+	xmpp_stanza_set_attribute(jingle,"action","session-info");
+	xmpp_stanza_set_attribute(jingle,"initiator",xmpp_conn_get_bound_jid(conn));
+	xmpp_stanza_add_child(iq,jingle);
+
+	xmpp_stanza_t * checksum = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(checksum,"checksum");
+	xmpp_stanza_set_ns(checksum,"urn:xmpp:jingle:apps:file-transfer:3");
+	xmpp_stanza_add_child(jingle,checksum);
+
+	xmpp_stanza_t * file = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(file,"file");
+	xmpp_stanza_add_child(checksum,file);
+
+	xmpp_stanza_t * fid = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(fid,"fid");
+	addTextChild(fid,hash.fid);
+	xmpp_stanza_add_child(file,fid);
+
+	xmpp_stanza_t * hash_stanza = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(hash_stanza,"hash");
+	xmpp_stanza_set_ns(hash_stanza,"urn:xmpp:hashes:1");
+	xmpp_stanza_set_attribute(hash_stanza,"algo",hash.algo.c_str());
+	addTextChild(hash_stanza,hash.hash);
+	xmpp_stanza_add_child(file,hash_stanza);
+
+	xmpp_send(conn,iq);
+
+	xmpp_stanza_release(hash_stanza);
+	xmpp_stanza_release(fid);
+	xmpp_stanza_release(file);
+	xmpp_stanza_release(checksum);
+	xmpp_stanza_release(jingle);
+	xmpp_stanza_release(iq);
+}
+
+void ofxXMPP::ack(const ofxXMPPJingleHash & hash){
+	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(iq,"iq");
+	xmpp_stanza_set_attribute(iq,"to",hash.from.c_str());
+	xmpp_stanza_set_type(iq,"set");
+
+	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(jingle,"jingle");
+	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
+	xmpp_stanza_set_attribute(jingle,"action","session-info");
+	xmpp_stanza_set_attribute(jingle,"initiator",hash.from.c_str());
+	xmpp_stanza_set_attribute(jingle,"sid",hash.sid.c_str());
+	xmpp_stanza_add_child(iq,jingle);
+
+	xmpp_stanza_t * received = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(received,"received");
+	xmpp_stanza_set_ns(received,"urn:xmpp:jingle:apps:file-transfer:3");
+	xmpp_stanza_add_child(jingle,received);
+
+	xmpp_stanza_t * file = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(file,"file");
+	xmpp_stanza_add_child(received,file);
+
+	xmpp_stanza_t * fid = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(fid,"fid");
+	addTextChild(fid,hash.fid);
+	xmpp_stanza_add_child(file,fid);
+
+	xmpp_stanza_t * hash_stanza = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(hash_stanza,"hash");
+	xmpp_stanza_set_ns(hash_stanza,"urn:xmpp:hashes:1");
+	xmpp_stanza_set_attribute(hash_stanza,"algo",hash.algo.c_str());
+	addTextChild(hash_stanza,hash.hash);
+	xmpp_stanza_add_child(file,hash_stanza);
+
+	xmpp_send(conn,iq);
+
+	xmpp_stanza_release(hash_stanza);
+	xmpp_stanza_release(fid);
+	xmpp_stanza_release(file);
+	xmpp_stanza_release(received);
+	xmpp_stanza_release(jingle);
+	xmpp_stanza_release(iq);
+
+	//jingleFileTransferState = FileWaitingFile;
+}
+
 void ofxXMPP::threadedFunction(){
 	xmpp_run(ctx);
 }
@@ -650,6 +1146,7 @@ void ofxXMPP::acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jing
 	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(iq,"iq");
 	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingleInitiation.sid.c_str());
 	xmpp_stanza_set_type(iq,"set");
 
 	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
@@ -689,30 +1186,7 @@ void ofxXMPP::acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jing
 			xmpp_stanza_release(payload);
 		}
 
-		xmpp_stanza_t * transport = xmpp_stanza_new(ctx);
-		xmpp_stanza_set_name(transport,"transport");
-		xmpp_stanza_set_ns(transport,"urn:xmpp:jingle:transports:ice-udp:1");
-		xmpp_stanza_set_attribute(transport,"pwd",xmppContent.transport.pwd.c_str());
-		xmpp_stanza_set_attribute(transport,"ufrag",xmppContent.transport.ufrag.c_str());
-
-		for(size_t c=0;c<xmppContent.transport.candidates.size();c++){
-			const ofxICECandidate & xmppCandidate = xmppContent.transport.candidates[c];
-			xmpp_stanza_t * candidate = xmpp_stanza_new(ctx);
-			xmpp_stanza_set_name(candidate,"candidate");
-			xmpp_stanza_set_attribute(candidate,"component",ofToString(xmppCandidate.component).c_str());
-			xmpp_stanza_set_attribute(candidate,"foundation",xmppCandidate.foundation.c_str());
-			xmpp_stanza_set_attribute(candidate,"generation",ofToString(xmppCandidate.generation).c_str());
-			xmpp_stanza_set_id(candidate,xmppCandidate.id.c_str());
-			xmpp_stanza_set_attribute(candidate,"ip",xmppCandidate.ip.c_str());
-			xmpp_stanza_set_attribute(candidate,"network",ofToString(xmppCandidate.network).c_str());
-			xmpp_stanza_set_attribute(candidate,"port",ofToString(xmppCandidate.port).c_str());
-			xmpp_stanza_set_attribute(candidate,"priority",ofToString(xmppCandidate.priority).c_str());
-			xmpp_stanza_set_attribute(candidate,"protocol",xmppCandidate.protocol.c_str());
-			xmpp_stanza_set_type(candidate,xmppCandidate.type.c_str());
-
-			xmpp_stanza_add_child(transport,candidate);
-			xmpp_stanza_release(candidate);
-		}
+		xmpp_stanza_t * transport = stanzaFromICETransport(xmppContent.transport);
 
 		xmpp_stanza_add_child(content,transport);
 		xmpp_stanza_release(transport);
@@ -731,17 +1205,17 @@ void ofxXMPP::acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jing
 }
 
 
-void ofxXMPP::terminateRTPSession(const string & to, ofxXMPPTerminateReason reason){
+void ofxXMPP::terminateRTPSession(ofxXMPPJingleInitiation & jingle, ofxXMPPTerminateReason reason){
 	xmpp_stanza_t * iq = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(iq,"iq");
-	xmpp_stanza_set_attribute(iq,"to",to.c_str());
+	xmpp_stanza_set_attribute(iq,"to",jingle.from.c_str());
+	xmpp_stanza_set_attribute(iq,"sid",jingle.sid.c_str());
 	xmpp_stanza_set_type(iq,"set");
 
-	xmpp_stanza_t * jingle = xmpp_stanza_new(ctx);
-	xmpp_stanza_set_name(jingle,"jingle");
-	xmpp_stanza_set_ns(jingle,"urn:xmpp:jingle:1");
-	xmpp_stanza_set_attribute(jingle,"action","session-terminate");
-	//TODO: sid
+	xmpp_stanza_t * jingle_stanza = xmpp_stanza_new(ctx);
+	xmpp_stanza_set_name(jingle_stanza,"jingle");
+	xmpp_stanza_set_ns(jingle_stanza,"urn:xmpp:jingle:1");
+	xmpp_stanza_set_attribute(jingle_stanza,"action","session-terminate");
 
 	xmpp_stanza_t * reason_stanza = xmpp_stanza_new(ctx);
 	xmpp_stanza_set_name(reason_stanza,"reason");
@@ -759,15 +1233,15 @@ void ofxXMPP::terminateRTPSession(const string & to, ofxXMPPTerminateReason reas
 		break;
 	}
 
-	xmpp_stanza_add_child(iq,jingle);
-	xmpp_stanza_add_child(jingle,reason_stanza);
+	xmpp_stanza_add_child(iq,jingle_stanza);
+	xmpp_stanza_add_child(jingle_stanza,reason_stanza);
 	xmpp_stanza_add_child(reason_stanza,reason_content);
 
 	xmpp_send(conn,iq);
 
 	xmpp_stanza_release(reason_content);
 	xmpp_stanza_release(reason_stanza);
-	xmpp_stanza_release(jingle);
+	xmpp_stanza_release(jingle_stanza);
 	xmpp_stanza_release(iq);
 }
 

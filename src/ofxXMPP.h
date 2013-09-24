@@ -96,7 +96,29 @@ struct ofxXMPPJingleContent{
 
 struct ofxXMPPJingleInitiation{
 	string from;
+	string sid;
 	vector<ofxXMPPJingleContent> contents;
+};
+
+
+struct ofxXMPPJingleFileInitiation{
+	string fid;
+	string from;
+	string sid;
+	string name;
+	string date;
+	string desc;
+	size_t size;
+	string hash;  // file hash as sha-1
+	ofxXMPPICETransport transport;
+};
+
+struct ofxXMPPJingleHash{
+	string sid;
+	string fid;
+	string from;
+	string hash;
+	string algo;
 };
 
 class ofxXMPP: public ofThread {
@@ -118,23 +140,43 @@ public:
 
 	string getBoundJID();
 
+	/// general events
 	ofEvent<ofxXMPPConnectionState> connectionStateChanged;
 	ofEvent<ofxXMPPMessage> newMessage;
+	ofEvent<ofxXMPPUser> userConnected;
+	ofEvent<ofxXMPPUser> userDisconnected;
+
+	/// jingle rtp events
 	ofEvent<ofxXMPPJingleInitiation> jingleInitiationReceived;
 	ofEvent<string> jingleInitiationACKd;
 	ofEvent<ofxXMPPJingleInitiation> jingleInitiationAccepted;
 	ofEvent<ofxXMPPTerminateReason> jingleTerminateReceived;
-	ofEvent<ofxXMPPUser> userConnected;
-	ofEvent<ofxXMPPUser> userDisconnected;
 	ofEvent<string> jingleRing;
 
+	/// jingle file transfer events
+	ofEvent<ofxXMPPJingleFileInitiation> jingleFileInitiationReceived;
+	ofEvent<ofxXMPPJingleFileInitiation> jingleFileInitiationAccepted;
+	ofEvent<ofxXMPPJingleHash> hashReceived;
+	ofEvent<ofxXMPPJingleHash> hashACKd;
+
+
+
 	// RTP-ICE using Jingle  xmpp.org/extensions/xep-0167.html
+
+	/// returns sid for the initiated session
 	void initiateRTP(const string & to, ofxXMPPJingleInitiation & jingle);
 	void ack(const ofxXMPPJingleInitiation & jingle);
 	void ring(const ofxXMPPJingleInitiation & jingle);
-	void ackRing(const string & to);
+	void ackRing(const string & to, const string & sid);
 	void acceptRTPSession(const string & to, ofxXMPPJingleInitiation & jingle);
-	void terminateRTPSession(const string & to, ofxXMPPTerminateReason reason);
+	void terminateRTPSession(ofxXMPPJingleInitiation & jingle, ofxXMPPTerminateReason reason);
+
+	// File transfer based on Jingle file transfer but using libnice tcp over udp
+	void initiateFileTransfer(const string & to, ofxXMPPJingleFileInitiation & jingle);
+	void ack(const ofxXMPPJingleFileInitiation & jingle);
+	void acceptFileTransfer(ofxXMPPJingleFileInitiation & jingle);
+	void sendFileHash(const string & to, const ofxXMPPJingleHash & hash);
+	void ack(const ofxXMPPJingleHash & hash);
 
 	static string toString(ofxXMPPShowState showState);
 	static ofxXMPPShowState fromString(string showState);
@@ -156,9 +198,27 @@ public:
     	AcceptingRTP
     };
 
+    /*enum JingleFileTransferState{
+    	FileDisconnected=0,
+    	FileSessionAccepted,
+
+    	//initiator
+    	FileInitiatingRTP,
+    	FileInitiationACKd,
+    	FileWaitingSessionAccept,
+
+    	// responder
+    	FileWaitingFile,
+    	FileGotInitiate,
+    	FileRinging,
+    	FileRingACKd,
+    	FileAcceptingRTP
+    };*/
+
     JingleState getJingleState();
 
 
+    static string LOG_NAME;
 
 private:
 	void threadedFunction();
@@ -166,6 +226,15 @@ private:
 	void sendPressence();
 
 	void update(ofEventArgs & args);
+	void fileInitiationReceived(xmpp_stanza_t * iq);
+	void rtpInitiationReceived(xmpp_stanza_t * iq);
+	void fileInitiationAccepted(xmpp_stanza_t * iq);
+	void rtpInitiationAccepted(xmpp_stanza_t * iq);
+
+	ofxXMPPJingleInitiation jingleInititationFromStanza(xmpp_stanza_t * jingle);
+	ofxXMPPJingleFileInitiation jingleFileInititationFromStanza(xmpp_stanza_t * iq);
+
+	xmpp_stanza_t * stanzaFromICETransport(const ofxXMPPICETransport & transport);
 
 	static void conn_handler(xmpp_conn_t * const conn, const xmpp_conn_event_t status,
             const int error, xmpp_stream_error_t * const stream_error,
@@ -197,8 +266,12 @@ private:
     string userName;
 
     JingleState jingleState;
+    //JingleFileTransferState jingleFileTransferState;
 
     static string toString(JingleState state);
+    //static string toString(JingleFileTransferState state);
+    void addTextChild(xmpp_stanza_t * stanza, const string & textstr);
+
 };
 
 #endif /* OFXXMPP_H_ */
