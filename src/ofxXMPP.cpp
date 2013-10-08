@@ -34,6 +34,8 @@ string ofxXMPP::toString(JingleState state){
 		return "RingACKd";
 	case AcceptingRTP:
 		return "AcceptingRTP";
+	default:
+		return "Unknown";
 	}
 }
 
