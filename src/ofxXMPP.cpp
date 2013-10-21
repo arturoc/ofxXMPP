@@ -487,17 +487,6 @@ ofxXMPP::ofxXMPP()
 ,jingleState(Disconnected)
 //,jingleFileTransferState(FileDisconnected)
 {
-	static bool initialized = false;
-	if(!initialized){
-		xmpp_initialize();
-
-		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
-		xmpp_log_t * log = NULL;
-	    ctx = xmpp_ctx_new(NULL, log);
-
-		startThread();
-		initialized = true;
-	}
 }
 
 ofxXMPP::~ofxXMPP() {
@@ -619,6 +608,18 @@ void ofxXMPP::sendPressence(){
 }
 
 void ofxXMPP::connect(const string & host, const string & jid, const string & pass){
+
+	static bool initialized = false;
+	if(!initialized){
+		xmpp_initialize();
+
+		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
+		xmpp_log_t * log = NULL;
+	    ctx = xmpp_ctx_new(NULL, log);
+
+		startThread();
+		initialized = true;
+	}
 
     conn = xmpp_conn_new(ctx);
 

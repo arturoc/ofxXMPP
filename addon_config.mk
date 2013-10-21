@@ -92,7 +92,9 @@ android/armeabi:
 android/armeabi-v7a:	
 
 osx:
+	ADDON_LDFLAGS = -lresolv
     
 ios:
+	ADDON_LDFLAGS = -lresolv
 
 
