@@ -62,7 +62,9 @@ common:
 	
 	# when parsing the file system looking for sources exclude this for all or
 	# a specific platform
-	# ADDON_SOURCES_EXCLUDE = 
+	ADDON_SOURCES_EXCLUDE = libs/strophe/src/parser_libxml2.c
+	ADDON_SOURCES_EXCLUDE += libs/strophe/src/tls_dummy.c
+	ADDON_SOURCES_EXCLUDE += libs/strophe/src/tls_gnutls.c
 	
 	# when parsing the file system looking for include paths exclude this for all or
 	# a specific platform
@@ -75,9 +77,21 @@ linux:
 	ADDON_LDFLAGS = -lresolv
 	
 win_cb:
-	
+	ADDON_CFLAGS = -DHAVE_MEMMOVE
+	ADDON_SOURCES_EXCLUDE = libs\strophe\src\parser_libxml2.c
+	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_dummy.c
+	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_gnutls.c
+	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_openssl.c
+	ADDON_INCLUDES += ../../../libs/openssl/include
 	
 vs:
+	ADDON_CFLAGS = /DHAVE_MEMMOVE
+	ADDON_SOURCES_EXCLUDE = libs\strophe\src\parser_libxml2.c
+	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_dummy.c
+	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_gnutls.c
+	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_schannel.c
+	ADDON_INCLUDES += ../../../libs/openssl/include
+	ADDON_LIBS += Iphlpapi.lib
 	
 	
 linuxarmv6l:
