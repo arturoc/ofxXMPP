@@ -78,7 +78,6 @@ void testApp::draw(){
 		ofDrawBitmapString("connecting...",ofGetWidth()/2-7*8,ofGetHeight()/2-4);
 	}else{
 		ofDrawBitmapString("disconnected",ofGetWidth()/2-7*8,ofGetHeight()/2-4);
-		xmpp.connect("talk.google.com","ofarturo@gmail.com","asdqwe34");
 	}
 }
 
