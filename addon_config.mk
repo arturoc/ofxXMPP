@@ -95,12 +95,6 @@ win_cb:
 	ADDON_INCLUDES += ../../../libs/openssl/include
 	
 vs:
-	ADDON_CFLAGS = /DHAVE_MEMMOVE
-	ADDON_SOURCES_EXCLUDE = libs\strophe\src\parser_libxml2.c
-	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_dummy.c
-	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_gnutls.c
-	ADDON_SOURCES_EXCLUDE += libs\strophe\src\tls_schannel.c
-	ADDON_INCLUDES += ../../../libs/openssl/include
 	ADDON_LIBS += Iphlpapi.lib
 	
 	
