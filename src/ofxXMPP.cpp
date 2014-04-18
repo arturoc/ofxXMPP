@@ -613,8 +613,8 @@ void ofxXMPP::connect(const string & host, const string & jid, const string & pa
 	if(!initialized){
 		xmpp_initialize();
 
-		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
-		xmpp_log_t * log = NULL;
+		xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
+		//xmpp_log_t * log = NULL;
 	    ctx = xmpp_ctx_new(NULL, log);
 
 		startThread();
@@ -661,6 +661,21 @@ vector<ofxXMPPUser> ofxXMPP::getFriends(){
 	lock();
 	for(map<string,ofxXMPPUser>::iterator it=friends.begin();it!=friends.end();it++){
 		friendsVector.push_back(it->second);
+	}
+	unlock();
+	return friendsVector;
+}
+
+vector<ofxXMPPUser> ofxXMPP::getFriendsWithCapability(const string & capability){
+	vector<ofxXMPPUser> friendsVector;
+	lock();
+	for(map<string,ofxXMPPUser>::iterator it=friends.begin();it!=friends.end();it++){
+		for(size_t i=0;i<it->second.capabilities.size();i++){
+			if(it->second.capabilities[i]==capability){
+				friendsVector.push_back(it->second);
+				break;
+			}
+		}
 	}
 	unlock();
 	return friendsVector;

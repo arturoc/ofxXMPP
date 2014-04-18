@@ -161,6 +161,10 @@ public:
 	/// capabilities...
 	vector<ofxXMPPUser> getFriends();
 
+	/// returns a vector with all the users in our contact list from which we can know their state,
+	/// capabilities...
+	vector<ofxXMPPUser> getFriendsWithCapability(const string & capability);
+
 	/// returns the connection state of this client
 	ofxXMPPConnectionState getConnectionState();
 
