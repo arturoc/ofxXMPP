@@ -490,7 +490,8 @@ ofxXMPP::ofxXMPP()
 }
 
 ofxXMPP::~ofxXMPP() {
-	//xmpp_shutdown();
+	ofRemoveListener(ofEvents().update,this,&ofxXMPP::update);
+	stop();
 }
 
 string ofxXMPP::toString(ofxXMPPShowState showState){
@@ -613,8 +614,8 @@ void ofxXMPP::connect(const string & host, const string & jid, const string & pa
 	if(!initialized){
 		xmpp_initialize();
 
-		xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
-		//xmpp_log_t * log = NULL;
+		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
+		xmpp_log_t * log = NULL;
 	    ctx = xmpp_ctx_new(NULL, log);
 
 		startThread();
@@ -877,8 +878,8 @@ void ofxXMPP::ackRing(const string & to, const string & sid){
 }
 
 void ofxXMPP::stop(){
-	xmpp_stop(ctx);
 	xmpp_conn_release(conn);
+	xmpp_stop(ctx);
 	xmpp_ctx_free(ctx);
 	ctx = NULL;
 	conn = NULL;
