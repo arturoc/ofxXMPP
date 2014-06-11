@@ -28,4 +28,5 @@ class testApp : public ofBaseApp{
 		deque<ofxXMPPMessage> messages;
 		string currentMessage;
 		int selectedFriend;
+		bool missingSettings;
 };

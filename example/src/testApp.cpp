@@ -1,19 +1,23 @@
 #include "testApp.h"
+#include "ofConstants.h"
 
 //--------------------------------------------------------------
 void testApp::setup(){
 	ofXml settings;
-	settings.load("settings.xml");
-	string server = settings.getValue("server");
-	string user = settings.getValue("user");
-	string pwd = settings.getValue("pwd");
+	missingSettings = !settings.load("settings.xml");
+	if(!missingSettings){
+
+		string server = settings.getValue("server");
+		string user = settings.getValue("user");
+		string pwd = settings.getValue("pwd");
 
 
-	xmpp.setShow(ofxXMPPShowAvailable);
-	xmpp.setStatus("connnected from ofxXMPP");
-	xmpp.connect(server,user,pwd);
+		xmpp.setShow(ofxXMPPShowAvailable);
+		xmpp.setStatus("connnected from ofxXMPP");
+		xmpp.connect(server,user,pwd);
 
-	ofAddListener(xmpp.newMessage,this,&testApp::onNewMessage);
+		ofAddListener(xmpp.newMessage,this,&testApp::onNewMessage);
+	}
 
 	selectedFriend = -1;
 
@@ -76,6 +80,8 @@ void testApp::draw(){
 		}
 	}else if(xmpp.getConnectionState()==ofxXMPPConnecting){
 		ofDrawBitmapString("connecting...",ofGetWidth()/2-7*8,ofGetHeight()/2-4);
+	}else if(missingSettings){
+		ofDrawBitmapString("missing settings",ofGetWidth()/2-7*8,ofGetHeight()/2-4);
 	}else{
 		ofDrawBitmapString("disconnected",ofGetWidth()/2-7*8,ofGetHeight()/2-4);
 	}
