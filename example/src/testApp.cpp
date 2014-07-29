@@ -97,6 +97,20 @@ void testApp::keyPressed(int key){
 		selectedFriend++;
 		selectedFriend %= xmpp.getFriends().size();
 	}
+	else if(key==OF_KEY_LEFT_CONTROL){
+		xmpp.stop();
+		ofXml settings;
+		missingSettings = !settings.load("settings.xml");
+		if(!missingSettings){
+			string server = settings.getValue("server");
+			string user = settings.getValue("user");
+			string pwd = settings.getValue("pwd");
+			xmpp.connect(server,user,pwd);
+		}
+	}
+	else if(key==OF_KEY_CONTROL){
+
+	}
 	else if(key!=OF_KEY_RETURN){
 		currentMessage += (char)key;
 	}else{

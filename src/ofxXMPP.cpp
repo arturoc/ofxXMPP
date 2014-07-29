@@ -73,13 +73,19 @@ void ofxXMPP::conn_handler(xmpp_conn_t * const conn, const xmpp_conn_event_t sta
 	ofxXMPP * xmpp = (ofxXMPP*) userdata;
 
     if (status == XMPP_CONN_CONNECT) {
-        fprintf(stderr, "DEBUG: connected\n");
+        ofLogVerbose() << "connected\n";
         xmpp->sendPressence();
         xmpp->connectionState = ofxXMPPConnected;
-    }
-    else {
-        fprintf(stderr, "DEBUG: disconnected\n");
-        xmpp->stop();
+    } else {
+        ofLogVerbose() << "disconnected\n";
+        xmpp->mutex.lock();
+        if(xmpp->disconnecting){
+        	xmpp->disconnection.signal();
+        	xmpp->mutex.unlock();
+        }else{
+        	xmpp->mutex.unlock();
+        	xmpp->stop();
+        }
         xmpp->connectionState = ofxXMPPDisconnected;
     }
 
@@ -485,6 +491,7 @@ ofxXMPP::ofxXMPP()
 ,currentShow(ofxXMPPShowAvailable)
 ,connectionState(ofxXMPPDisconnected)
 ,jingleState(Disconnected)
+,disconnecting(false)
 //,jingleFileTransferState(FileDisconnected)
 {
 }
@@ -609,17 +616,17 @@ void ofxXMPP::sendPressence(){
 }
 
 void ofxXMPP::connect(const string & host, const string & jid, const string & pass){
-
-	static bool initialized = false;
-	if(!initialized){
+	static bool libInitialized = false;
+	if(!libInitialized){
 		xmpp_initialize();
-
-		//xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
-		xmpp_log_t * log = NULL;
+		libInitialized = true;
+	}
+	if(!isThreadRunning()){
+		xmpp_log_t * log = xmpp_get_default_logger(XMPP_LEVEL_DEBUG);
+		//xmpp_log_t * log = NULL;
 	    ctx = xmpp_ctx_new(NULL, log);
 
 		startThread();
-		initialized = true;
 	}
 
     conn = xmpp_conn_new(ctx);
@@ -878,11 +885,18 @@ void ofxXMPP::ackRing(const string & to, const string & sid){
 }
 
 void ofxXMPP::stop(){
-	xmpp_conn_release(conn);
+	mutex.lock();
+	disconnecting = true;
+	xmpp_disconnect(conn);
+	disconnection.wait(mutex);
 	xmpp_stop(ctx);
+	waitForThread();
+	xmpp_conn_release(conn);
 	xmpp_ctx_free(ctx);
 	ctx = NULL;
 	conn = NULL;
+	disconnecting = false;
+	mutex.unlock();
 }
 
 void ofxXMPP::initiateFileTransfer(const string & to, ofxXMPPJingleFileInitiation & jingleFileInitiation){

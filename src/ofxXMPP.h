@@ -14,6 +14,7 @@
 #include <map>
 #include <queue>
 #include "ofEvents.h"
+#include "Poco/Condition.h"
 
 
 enum ofxXMPPChatState{
@@ -318,6 +319,9 @@ private:
 
     JingleState jingleState;
     //JingleFileTransferState jingleFileTransferState;
+
+    Poco::Condition disconnection;
+    bool disconnecting;
 
     static string toString(JingleState state);
     //static string toString(JingleFileTransferState state);
