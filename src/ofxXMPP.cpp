@@ -896,6 +896,7 @@ void ofxXMPP::stop(){
 	ctx = NULL;
 	conn = NULL;
 	disconnecting = false;
+	friends.clear();
 	mutex.unlock();
 }
 
