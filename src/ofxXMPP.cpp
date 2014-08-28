@@ -1277,6 +1277,7 @@ void ofxXMPP::terminateRTPSession(ofxXMPPJingleInitiation & jingle, ofxXMPPTermi
 	xmpp_stanza_release(reason_stanza);
 	xmpp_stanza_release(jingle_stanza);
 	xmpp_stanza_release(iq);
+	jingleState = Disconnected;
 }
 
 ofxXMPP::JingleState ofxXMPP::getJingleState(){
