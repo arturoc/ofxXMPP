@@ -85,7 +85,9 @@ void ofxXMPP::conn_handler(xmpp_conn_t * const conn, const xmpp_conn_event_t sta
         	xmpp->mutex.unlock();
         }else{
         	xmpp->mutex.unlock();
-        	xmpp->stop();
+			if (((ofxXMPP*) userdata)->getConnectionState() == ofxXMPPConnected){ // without this check xmpp->stop will be caught in a deadlock
+				xmpp->stop();
+			}
         }
         xmpp->connectionState = ofxXMPPDisconnected;
     }
